@@ -1,4 +1,4 @@
-## Apache HTTPD 2.5 for Windows amd64
+## Apache httpd 2.5 for Windows amd64
 > Apache binaries are built with the original source released by the Apache Software Foundation and have been compiled with Visual Studio 2022 (VC17) to obtain higher performance and better stability
 
 ### Build Specifications
