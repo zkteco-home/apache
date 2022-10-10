@@ -13,6 +13,9 @@
 * Server MPM:     WinNT
 *   threaded:     yes 
 
+modules/mod_wsgi.cp37-win_amd64.pyd(4.9.4) is used for Python3.7 with Django on Httpd 2.5
+modules/mod_wsgi.cp310-win_amd64.pyd(4.9.4) is used for Python3.10 with Django on Httpd 2.5
+
 
 ### System Requirements
 * Windows 7 SP1
