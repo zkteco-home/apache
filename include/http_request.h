@@ -407,7 +407,6 @@ AP_DECLARE_HOOK(int,map_to_storage,(request_rec *r))
  * by the 'Require' directive). It runs after the access_checker hook, and
  * before the auth_checker hook. This hook should be registered with
  * ap_hook_check_authn().
- * If "Satisfy any" is in effect, this hook may be skipped.
  *
  * @param r The current request
  * @return OK, DECLINED, or HTTP_...
@@ -452,9 +451,8 @@ AP_DECLARE_HOOK(int,access_checker,(request_rec *r))
 /**
  * This hook is used to apply additional access control and/or bypass
  * authentication for this resource. It runs *before* a user is authenticated,
- * but after the access_checker hook.
+ * but after the auth_checker hook.
  * This hook should be registered with ap_hook_check_access_ex().
- * If "Satisfy any" is in effect, this hook may be skipped.
  *
  * @param r the current request
  * @return OK (allow access), DECLINED (let later modules decide),
@@ -471,7 +469,6 @@ AP_DECLARE_HOOK(int,access_checker_ex,(request_rec *r))
  * it will *only* be called if Apache determines that access control has
  * been applied to this resource (through a 'Require' directive). This
  * hook should be registered with ap_hook_check_authz().
- * If "Satisfy any" is in effect, this hook may be skipped.
  *
  * @param r the current request
  * @return OK, DECLINED, or HTTP_...
@@ -625,13 +622,6 @@ AP_DECLARE(apr_bucket *) ap_bucket_eor_make(apr_bucket *b, request_rec *r);
  */
 AP_DECLARE(apr_bucket *) ap_bucket_eor_create(apr_bucket_alloc_t *list,
                                               request_rec *r);
-
-/**
- * Get the request bound to an End Of Request (EOR) bucket.
- * @param b The EOR bucket
- * @return Its associated request
- */
-AP_DECLARE(request_rec *) ap_bucket_eor_request(apr_bucket *b);
 
 /**
  * Can be used within any handler to determine if any authentication

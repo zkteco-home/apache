@@ -56,7 +56,6 @@
 #include "apr_buckets.h"
 #include "apr_poll.h"
 #include "apr_thread_proc.h"
-#include "apr_hash.h"
 
 #include "os.h"
 
@@ -250,10 +249,6 @@ extern "C" {
 #define DOCTYPE_HTML_4_0F "<!DOCTYPE HTML PUBLIC \"-//W3C//" \
                           "DTD HTML 4.0 Frameset//EN\"\n" \
                           "\"http://www.w3.org/TR/REC-html40/frameset.dtd\">\n"
-/** HTML 4.01 Doctype */
-#define DOCTYPE_HTML_4_01 "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\n"
-/** HTML 5 Doctype */
-#define DOCTYPE_HTML_5 "<!DOCTYPE html>\n"
 /** XHTML 1.0 Strict Doctype */
 #define DOCTYPE_XHTML_1_0S "<!DOCTYPE html PUBLIC \"-//W3C//" \
                            "DTD XHTML 1.0 Strict//EN\"\n" \
@@ -528,12 +523,10 @@ AP_DECLARE(const char *) ap_get_server_built(void);
 #define HTTP_UNSUPPORTED_MEDIA_TYPE          415
 #define HTTP_RANGE_NOT_SATISFIABLE           416
 #define HTTP_EXPECTATION_FAILED              417
-#define HTTP_IM_A_TEAPOT                     418
 #define HTTP_MISDIRECTED_REQUEST             421
 #define HTTP_UNPROCESSABLE_ENTITY            422
 #define HTTP_LOCKED                          423
 #define HTTP_FAILED_DEPENDENCY               424
-#define HTTP_TOO_EARLY                       425
 #define HTTP_UPGRADE_REQUIRED                426
 #define HTTP_PRECONDITION_REQUIRED           428
 #define HTTP_TOO_MANY_REQUESTS               429
@@ -622,15 +615,7 @@ AP_DECLARE(const char *) ap_get_server_built(void);
 #define M_MKACTIVITY            23
 #define M_BASELINE_CONTROL      24
 #define M_MERGE                 25
-/* Additional methods must be registered by the implementor, we have only
- * room for 64 bit-wise methods available, so do not squander them (more of
- * the above methods should probably move here)
- */
-/* #define M_BREW                  nn */     /** RFC 2324: HTCPCP/1.0 */
-/* #define M_WHEN                  nn */     /** RFC 2324: HTCPCP/1.0 */
-#define M_INVALID               26      /** invalid method value terminates the
-                                         *  listed ap_method_registry_init()
-                                         */
+#define M_INVALID               26      /** no valid method */
 
 /**
  * METHODS needs to be equal to the number of bits
@@ -639,13 +624,11 @@ AP_DECLARE(const char *) ap_get_server_built(void);
 #define METHODS     64
 
 /**
- * The type used for method masks.
- */
-typedef apr_uint64_t ap_method_mask_t;
-/**
  * The method mask bit to shift for anding with a bitmask.
  */
-#define AP_METHOD_BIT ((ap_method_mask_t)1)
+#define AP_METHOD_BIT ((apr_int64_t)1)
+/** @} */
+
 
 /** @see ap_method_list_t */
 typedef struct ap_method_list_t ap_method_list_t;
@@ -659,7 +642,7 @@ typedef struct ap_method_list_t ap_method_list_t;
  */
 struct ap_method_list_t {
     /** The bitmask used for known methods */
-    ap_method_mask_t method_mask;
+    apr_int64_t method_mask;
     /** the array used for extension methods */
     apr_array_header_t *method_list;
 };
@@ -745,7 +728,6 @@ typedef apr_uint64_t ap_request_bnotes_t;
 #endif /* APR_CHARSET_EBCDIC */
 /** Useful for common code with either platform charset. */
 #define CRLF_ASCII "\015\012"
-#define ZERO_ASCII "\060"
 
 /**
  * @defgroup values_request_rec_body Possible values for request_rec.read_body
@@ -825,8 +807,6 @@ typedef struct process_rec process_rec;
 typedef struct server_rec server_rec;
 /** A structure that represents one connection */
 typedef struct conn_rec conn_rec;
-/** A structure that represents one slave connection */
-typedef struct conn_slave_rec conn_slave_rec;
 /** A structure that represents the current request */
 typedef struct request_rec request_rec;
 /** A structure that represents the status of the current connection */
@@ -889,7 +869,7 @@ struct request_rec {
     /** Protocol version number of protocol; 1.1 = 1001 */
     int proto_num;
     /** Protocol string, as given to us, or HTTP/0.9 */
-    const char *protocol;
+    char *protocol;
     /** Host, as set by full URI or Host: header.
      *  For literal IPv6 addresses, this does NOT include the surrounding [ ]
      */
@@ -932,7 +912,7 @@ struct request_rec {
      *  HTTP_METHOD_NOT_ALLOWED.  Unfortunately this means that a Script GET
      *  handler can't be installed by mod_actions.
      */
-    ap_method_mask_t allowed;
+    apr_int64_t allowed;
     /** Array of extension methods */
     apr_array_header_t *allowed_xmethods;
     /** List of allowed methods */
@@ -1099,9 +1079,7 @@ struct request_rec {
     /** Mutex protect callbacks registered with ap_mpm_register_timed_callback
      * from being run before the original handler finishes running
      */
-#if APR_HAS_THREADS
     apr_thread_mutex_t *invoke_mtx;
-#endif
 
     /** A struct containing the components of URI */
     apr_uri_t parsed_uri;
@@ -1126,32 +1104,13 @@ struct request_rec {
     char *useragent_host;
     /** have we done double-reverse DNS? -1 yes/failure, 0 not yet,
      *  1 yes/success
-     *  TODO: 2 bit signed bitfield when this structure is compacted
      */
     int double_reverse;
-    /** Mark the request as potentially tainted.  This might become a
-     *  bitfield if we identify different taints to be flagged.
-     *  Always use ap_request_tainted() to check taint.
-     */
-    int taint;
-    /** Whether the response has been flushed through the network,
-     *  relevant at ap_run_log_transaction() time only.
-     *  TODO: compact elsewhere
-     */
-    unsigned int flushed:1;
     /** Request flags associated with this request. Use
      * AP_REQUEST_GET_FLAGS() and AP_REQUEST_SET_FLAGS() to access
      * the elements of this field.
      */
     ap_request_bnotes_t bnotes;
-    /** Indicates that the request has a body of unknown length and
-     * protocol handlers need to read it, even if only to discard the
-     * data. In HTTP/1.1 this is set on chunked transfer encodings, but
-     * newer HTTP versions can transfer such bodies by other means. The
-     * absence of a "Transfer-Encoding" header is no longer sufficient
-     * to conclude that no body is there.
-     */
-    int body_indeterminate;
 };
 
 /**
@@ -1179,9 +1138,6 @@ typedef enum {
     AP_CONN_CLOSE,
     AP_CONN_KEEPALIVE
 } ap_conn_keepalive_e;
-
-/* For struct ap_filter and ap_filter_conn_ctx */
-#include "util_filter.h"
 
 /**
  * @brief Structure to store things which are per connection
@@ -1212,7 +1168,6 @@ struct conn_rec {
     char *remote_host;
     /** Only ever set if doing rfc1413 lookups.  N.B. Only access this through
      *  get_remote_logname() */
-    /* TODO: Remove from request_rec, make local to mod_ident */
     char *remote_logname;
 
     /** server IP address */
@@ -1239,6 +1194,10 @@ struct conn_rec {
     struct apr_bucket_alloc_t *bucket_alloc;
     /** The current state of this connection; may be NULL if not used by MPM */
     conn_state_t *cs;
+    /** Is there data pending in the input filters? */
+    int data_in_input_filters;
+    /** Is there data pending in the output filters? */
+    int data_in_output_filters;
 
     /** Are there any filters that clogg/buffer the input stream, breaking
      *  the event mpm.
@@ -1278,32 +1237,10 @@ struct conn_rec {
     apr_thread_t *current_thread;
 #endif
 
-    /** Array of slave connections (conn_slave_rec *) for this connection. */
-    apr_array_header_t *slaves;
-
     /** The "real" master connection. NULL if I am the master. */
     conn_rec *master;
 
-    /** context of this connection */
-    void *ctx;
-
-    /** Context under which this connection was suspended */
-    void *suspended_baton;
-
-    /** Array of requests being handled under this connection. */
-    apr_array_header_t *requests;
-
-    /** Filters private/opaque context for this connection */
-    struct ap_filter_conn_ctx *filter_conn_ctx;
-
-    /** The minimum level of filter type to allow setaside buckets */
-    int async_filter;
-
     int outgoing;
-};
-
-struct conn_slave_rec {
-  conn_rec *c;
 };
 
 /**
@@ -1389,10 +1326,6 @@ struct server_rec {
     apr_file_t *error_log;
     /** The log level configuration */
     struct ap_logconf log;
-    /** External error log writer provider */
-    struct ap_errorlog_provider *errorlog_provider;
-    /** Handle to be passed to external log provider's logging method */
-    void *errorlog_provider_handle;
 
     /* Module-specific configuration for server, and defaults... */
 
@@ -1798,7 +1731,6 @@ AP_DECLARE(int) ap_unescape_all(char *url);
  * Unescape a URL
  * @param url The url to unescape
  * @return 0 on success, non-zero otherwise
- * @deprecated Replaced by apr_unescape_url() in APR
  */
 AP_DECLARE(int) ap_unescape_url(char *url);
 
@@ -1807,7 +1739,6 @@ AP_DECLARE(int) ap_unescape_url(char *url);
  * @param url The url to unescape
  * @param decode_slashes Whether or not slashes should be decoded
  * @return 0 on success, non-zero otherwise
- * @deprecated Replaced by apr_unescape_url() in APR
  */
 AP_DECLARE(int) ap_unescape_url_keep2f(char *url, int decode_slashes);
 
@@ -1827,7 +1758,6 @@ AP_DECLARE(int) ap_unescape_url_ex(char *url, unsigned int flags);
  * Unescape an application/x-www-form-urlencoded string
  * @param query The query to unescape
  * @return 0 on success, non-zero otherwise
- * @deprecated Replaced by apr_unescape_url() in APR
  */
 AP_DECLARE(int) ap_unescape_urlencoded(char *query);
 
@@ -1836,8 +1766,8 @@ AP_DECLARE(int) ap_unescape_urlencoded(char *query);
  * to the filesystem on the current platform.
  * @param name The string to convert, assumed to be a filesystem path
  */
-AP_DECLARE(void) ap_no2slash(char *name)
-                 AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(void) ap_no2slash(char *name);
+
 /**
  * Convert all double slashes to single slashes, except where significant
  * to the filesystem on the current platform.
@@ -1845,8 +1775,7 @@ AP_DECLARE(void) ap_no2slash(char *name)
  * @param is_fs_path if set to 0, the significance of any double-slashes is 
  *        ignored.
  */
-AP_DECLARE(void) ap_no2slash_ex(char *name, int is_fs_path)
-                 AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(void) ap_no2slash_ex(char *name, int is_fs_path);
 
 #define AP_NORMALIZE_ALLOW_RELATIVE     (1u <<  0)
 #define AP_NORMALIZE_NOT_ABOVE_ROOT     (1u <<  1)
@@ -1861,49 +1790,40 @@ AP_DECLARE(void) ap_no2slash_ex(char *name, int is_fs_path)
  * @param flags bitmask of AP_NORMALIZE_* flags
  * @return non-zero on success
  */
-AP_DECLARE(int) ap_normalize_path(char *path, unsigned int flags)
-                AP_FN_ATTR_NONNULL((1));
+AP_DECLARE(int) ap_normalize_path(char *path, unsigned int flags);
 
 /**
  * Remove all ./ and xx/../ substrings from a file name. Also remove
  * any leading ../ or /../ substrings.
  * @param name the file name to parse
  */
-AP_DECLARE(void) ap_getparents(char *name)
-                 AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(void) ap_getparents(char *name);
 
 /**
  * Escape a path segment, as defined in RFC 1808
  * @param p The pool to allocate from
  * @param s The path to convert
  * @return The converted URL
- * @deprecated Replaced by apr_pescape_path_segment() in APR
  */
-AP_DECLARE(char *) ap_escape_path_segment(apr_pool_t *p, const char *s)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_escape_path_segment(apr_pool_t *p, const char *s);
 
 /**
  * Escape a path segment, as defined in RFC 1808, to a preallocated buffer.
  * @param c The preallocated buffer to write to
  * @param s The path to convert
  * @return The converted URL (c)
- * @deprecated Replaced by apr_escape_path_segment() in APR
  */
-AP_DECLARE(char *) ap_escape_path_segment_buffer(char *c, const char *s)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_escape_path_segment_buffer(char *c, const char *s);
 
 /**
  * convert an OS path to a URL in an OS dependent way.
  * @param p The pool to allocate from
  * @param path The path to convert
  * @param partial if set, assume that the path will be appended to something
- *        with a '/' in it (and thus does not prefix "./").
- * @return The converted URL, with one byte of extra space after the NUL
- *         to allow the caller to add a trailing '/'. 
- * @deprecated Replaced by apr_pescape_path() in APR
+ *        with a '/' in it (and thus does not prefix "./")
+ * @return The converted URL
  */
-AP_DECLARE(char *) ap_os_escape_path(apr_pool_t *p, const char *path, int partial)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_os_escape_path(apr_pool_t *p, const char *path, int partial);
 
 /** @see ap_os_escape_path */
 #define ap_escape_uri(ppool,path) ap_os_escape_path(ppool,path,1)
@@ -1913,27 +1833,22 @@ AP_DECLARE(char *) ap_os_escape_path(apr_pool_t *p, const char *path, int partia
  * @param p The pool to allocate from
  * @param s The path to convert
  * @return The converted URL
- * @deprecated Replaced by apr_pescape_url() in APR
  */
-AP_DECLARE(char *) ap_escape_urlencoded(apr_pool_t *p, const char *s)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_escape_urlencoded(apr_pool_t *p, const char *s);
 
 /**
  * Escape a string as application/x-www-form-urlencoded, to a preallocated buffer
  * @param c The preallocated buffer to write to
  * @param s The path to convert
  * @return The converted URL (c)
- * @deprecated Replaced by apr_escape_url() in APR
  */
-AP_DECLARE(char *) ap_escape_urlencoded_buffer(char *c, const char *s)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_escape_urlencoded_buffer(char *c, const char *s);
 
 /**
  * Escape an html string
  * @param p The pool to allocate from
  * @param s The html to escape
  * @return The escaped string
- * @deprecated Replaced by apr_pescape_entity() in APR
  */
 #define ap_escape_html(p,s) ap_escape_html2(p,s,0)
 /**
@@ -1942,20 +1857,16 @@ AP_DECLARE(char *) ap_escape_urlencoded_buffer(char *c, const char *s)
  * @param s The html to escape
  * @param toasc Whether to escape all non-ASCII chars to \&\#nnn;
  * @return The escaped string
- * @deprecated Replaced by apr_pescape_entity() in APR
  */
-AP_DECLARE(char *) ap_escape_html2(apr_pool_t *p, const char *s, int toasc)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_escape_html2(apr_pool_t *p, const char *s, int toasc);
 
 /**
  * Escape a string for logging
  * @param p The pool to allocate from
  * @param str The string to escape
  * @return The escaped string
- * @deprecated Replaced by apr_pescape_echo() in APR
  */
-AP_DECLARE(char *) ap_escape_logitem(apr_pool_t *p, const char *str)
-                   AP_FN_ATTR_NONNULL((1));
+AP_DECLARE(char *) ap_escape_logitem(apr_pool_t *p, const char *str);
 
 /**
  * Escape a string for logging into the error log (without a pool)
@@ -1963,11 +1874,9 @@ AP_DECLARE(char *) ap_escape_logitem(apr_pool_t *p, const char *str)
  * @param source The string to escape
  * @param buflen The buffer size for the escaped string (including "\0")
  * @return The len of the escaped string (always < maxlen)
- * @deprecated Replaced by apr_escape_echo() in APR
  */
 AP_DECLARE(apr_size_t) ap_escape_errorlog_item(char *dest, const char *source,
-                                               apr_size_t buflen)
-                       AP_FN_ATTR_NONNULL((1));
+                                               apr_size_t buflen);
 
 /**
  * Construct a full hostname
@@ -1978,26 +1887,22 @@ AP_DECLARE(apr_size_t) ap_escape_errorlog_item(char *dest, const char *source,
  * @return The server's hostname
  */
 AP_DECLARE(char *) ap_construct_server(apr_pool_t *p, const char *hostname,
-                                    apr_port_t port, const request_rec *r)
-                   AP_FN_ATTR_NONNULL((1,4));
+                                    apr_port_t port, const request_rec *r);
 
 /**
  * Escape a shell command
  * @param p The pool to allocate from
  * @param s The command to escape
  * @return The escaped shell command
- * @deprecated Replaced with apr_escape_shell() in APR
  */
-AP_DECLARE(char *) ap_escape_shell_cmd(apr_pool_t *p, const char *s)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_escape_shell_cmd(apr_pool_t *p, const char *s);
 
 /**
  * Count the number of directories in a path
  * @param path The path to count
  * @return The number of directories
  */
-AP_DECLARE(int) ap_count_dirs(const char *path)
-                AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(int) ap_count_dirs(const char *path);
 
 /**
  * Copy at most @a n leading directories of @a s into @a d. @a d
@@ -2010,8 +1915,7 @@ AP_DECLARE(int) ap_count_dirs(const char *path)
  * @note on platforms with drive letters, n = 0 returns the "/" root,
  * whereas n = 1 returns the "d:/" root.  On all other platforms, n = 0
  * returns the empty string.  */
-AP_DECLARE(char *) ap_make_dirstr_prefix(char *d, const char *s, int n)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_make_dirstr_prefix(char *d, const char *s, int n);
 
 /**
  * Return the parent directory name (including trailing /) of the file
@@ -2020,8 +1924,7 @@ AP_DECLARE(char *) ap_make_dirstr_prefix(char *d, const char *s, int n)
  * @param s The file to get the parent of
  * @return A copy of the file's parent directory
  */
-AP_DECLARE(char *) ap_make_dirstr_parent(apr_pool_t *p, const char *s)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_make_dirstr_parent(apr_pool_t *p, const char *s);
 
 /**
  * Given a directory and filename, create a single path from them.  This
@@ -2030,14 +1933,12 @@ AP_DECLARE(char *) ap_make_dirstr_parent(apr_pool_t *p, const char *s)
  * @param a The pool to allocate from
  * @param dir The directory name
  * @param f The filename
- * @return A copy of the full path, with one byte of extra space after the NUL
- *         to allow the caller to add a trailing '/'.
+ * @return A copy of the full path
  * @note Never consider using this function if you are dealing with filesystem
  * names that need to remain canonical, unless you are merging an apr_dir_read
  * path and returned filename.  Otherwise, the result is not canonical.
  */
-AP_DECLARE(char *) ap_make_full_path(apr_pool_t *a, const char *dir, const char *f)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_make_full_path(apr_pool_t *a, const char *dir, const char *f);
 
 /**
  * Test if the given path has an absolute path.
@@ -2047,8 +1948,7 @@ AP_DECLARE(char *) ap_make_full_path(apr_pool_t *a, const char *dir, const char 
  * multiple forms of absolute paths.  This only reports if the path is absolute
  * in a canonical sense.
  */
-AP_DECLARE(int) ap_os_is_path_absolute(apr_pool_t *p, const char *dir)
-                AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(int) ap_os_is_path_absolute(apr_pool_t *p, const char *dir);
 
 /**
  * Does the provided string contain wildcard characters?  This is useful
@@ -2057,8 +1957,7 @@ AP_DECLARE(int) ap_os_is_path_absolute(apr_pool_t *p, const char *dir)
  * @param str The string to check
  * @return 1 if the string has wildcards, 0 otherwise
  */
-AP_DECLARE(int) ap_is_matchexp(const char *str)
-                AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(int) ap_is_matchexp(const char *str);
 
 /**
  * Determine if a string matches a pattern containing the wildcards '?' or '*'
@@ -2066,8 +1965,7 @@ AP_DECLARE(int) ap_is_matchexp(const char *str)
  * @param expected The pattern to match against
  * @return 0 if the two strings match, 1 otherwise
  */
-AP_DECLARE(int) ap_strcmp_match(const char *str, const char *expected)
-                AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(int) ap_strcmp_match(const char *str, const char *expected);
 
 /**
  * Determine if a string matches a pattern containing the wildcards '?' or '*',
@@ -2076,8 +1974,7 @@ AP_DECLARE(int) ap_strcmp_match(const char *str, const char *expected)
  * @param expected The pattern to match against
  * @return 0 if the two strings match, 1 otherwise
  */
-AP_DECLARE(int) ap_strcasecmp_match(const char *str, const char *expected)
-                AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(int) ap_strcasecmp_match(const char *str, const char *expected);
 
 /**
  * Find the first occurrence of the substring s2 in s1, regardless of case
@@ -2086,8 +1983,7 @@ AP_DECLARE(int) ap_strcasecmp_match(const char *str, const char *expected)
  * @return A pointer to the beginning of the substring
  * @remark See apr_strmatch() for a faster alternative
  */
-AP_DECLARE(char *) ap_strcasestr(const char *s1, const char *s2)
-                   AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(char *) ap_strcasestr(const char *s1, const char *s2);
 
 /**
  * Return a pointer to the location inside of bigstring immediately after prefix
@@ -2096,46 +1992,21 @@ AP_DECLARE(char *) ap_strcasestr(const char *s1, const char *s2)
  * @return A pointer relative to bigstring after prefix
  */
 AP_DECLARE(const char *) ap_stripprefix(const char *bigstring,
-                                        const char *prefix)
-                         AP_FN_ATTR_NONNULL_ALL;
+                                        const char *prefix);
 
 /**
  * Decode a base64 encoded string into memory allocated from a pool
  * @param p The pool to allocate from
  * @param bufcoded The encoded string
  * @return The decoded string
- * @deprecated Replaced by apr_pbase64_decode() in APR.
  */
 AP_DECLARE(char *) ap_pbase64decode(apr_pool_t *p, const char *bufcoded);
-
-/**
- * Decode a base64 encoded string into memory allocated from a pool, while
- * ensuring that the input string is in fact valid base64.
- *
- * Unlike ap_pbase64decode(), this function allows encoded NULLs in the input to
- * be retained by the caller, by inspecting the len argument after the call
- * instead of using strlen(). A NULL terminator is still appended to the buffer
- * to facilitate string use (it is not included in len).
- *
- * @param p The pool to allocate from
- * @param encoded The encoded string
- * @param decoded On success, set to the decoded buffer, which is allocated from
- *                p
- * @param len On success, set to the length of the decoded buffer (not including
- *            the terminating NULL byte)
- * @return APR_SUCCESS if the decoding was successful
- */
-AP_DECLARE(apr_status_t) ap_pbase64decode_strict(apr_pool_t *p,
-                                                 const char *encoded,
-                                                 char **decoded,
-                                                 apr_size_t *len);
 
 /**
  * Encode a string into memory allocated from a pool in base 64 format
  * @param p The pool to allocate from
  * @param string The plaintext string
  * @return The encoded string
- * @deprecated Replaced by apr_pbase64_encode() in APR.
  */
 AP_DECLARE(char *) ap_pbase64encode(apr_pool_t *p, char *string);
 
@@ -2243,7 +2114,6 @@ AP_DECLARE(int) ap_rind(const char *str, char c);
  * @param p The pool to allocate memory from
  * @param instring The string to search for &quot;
  * @return A copy of the string with escaped quotes
- * @deprecated Replaced by apr_pescape_echo() in APR
  */
 AP_DECLARE(char *) ap_escape_quotes(apr_pool_t *p, const char *instring);
 
@@ -2272,7 +2142,7 @@ AP_DECLARE(int) ap_parse_strict_length(apr_off_t *len, const char *str);
 /**
  * Parse a given timeout parameter string into an apr_interval_time_t value.
  * The unit of the time interval is given as postfix string to the numeric
- * string. Currently the following units are understood (case insensitive):
+ * string. Currently the following units are understood:
  *
  * ms    : milliseconds
  * s     : seconds
@@ -2299,17 +2169,6 @@ AP_DECLARE(apr_status_t) ap_timeout_parameter_parse(
  * @return truth value
  */
 AP_DECLARE(int) ap_request_has_body(request_rec *r);
-
-/** Request taint flags.  Only .htaccess defined. */
-#define AP_TAINT_HTACCESS 0x1
-/**
- * Check whether a request is tainted by potentially-untrusted sources.
- *
- * @param r     the request
- * @param flags Taint flags to check
- * @return truth value
- */
-AP_DECLARE(int) ap_request_tainted(request_rec *r, int flags);
 
 /**
  * Cleanup a string (mainly to be filesystem safe)
@@ -2469,8 +2328,6 @@ AP_DECLARE(char *) ap_strrchr(char *s, int c);
 AP_DECLARE(const char *) ap_strrchr_c(const char *s, int c);
 AP_DECLARE(char *) ap_strstr(char *s, const char *c);
 AP_DECLARE(const char *) ap_strstr_c(const char *s, const char *c);
-AP_DECLARE(void *) ap_palloc_debug(apr_pool_t *p, apr_size_t size);
-AP_DECLARE(void *) ap_pcalloc_debug(apr_pool_t *p, apr_size_t size);
 
 #ifdef AP_DEBUG
 
@@ -2480,21 +2337,6 @@ AP_DECLARE(void *) ap_pcalloc_debug(apr_pool_t *p, apr_size_t size);
 # define strrchr(s, c) ap_strrchr(s,c)
 #undef strstr
 # define strstr(s, c)  ap_strstr(s,c)
-
-#if !defined(AP_DEBUG_NO_ALLOC_POISON) && !APR_POOL_DEBUG
-/*
- * ap_palloc_debug initializes allocated memory to non-zero
- */
-#define apr_palloc     ap_palloc_debug
-/*
- * this is necessary to avoid useless double memset of memory
- * with ap_palloc_debug
- */
-#ifdef apr_pcalloc
-#undef apr_pcalloc
-#endif
-#define apr_pcalloc    ap_pcalloc_debug
-#endif
 
 #else
 
@@ -2571,35 +2413,27 @@ AP_DECLARE(void *) ap_realloc(void *ptr, size_t size)
 
 #if APR_HAS_THREADS
 
-/* apr_thread_create() wrapper that handles thread pool limits and
- * ap_thread_current() eventually (if not handle by APR already).
- */
-AP_DECLARE(apr_status_t) ap_thread_create(apr_thread_t **thread, 
-                                          apr_threadattr_t *attr, 
-                                          apr_thread_start_t func, 
-                                          void *data, apr_pool_t *pool);
-
-/* Make the main() thread ap_thread_current()-able. */
-AP_DECLARE(apr_status_t) ap_thread_main_create(apr_thread_t **thread,
-                                               apr_pool_t *pool);
-
-#if APR_VERSION_AT_LEAST(1,8,0)
+#if APR_VERSION_AT_LEAST(1,8,0) && !defined(AP_NO_THREAD_LOCAL)
 
 /**
- * Use APR 1.8+ implementation.
+ * APR 1.8+ implement those already.
  */
-#if APR_HAS_THREAD_LOCAL && !defined(AP_NO_THREAD_LOCAL)
-#define AP_THREAD_LOCAL                 APR_THREAD_LOCAL
+#if APR_HAS_THREAD_LOCAL
+#define AP_HAS_THREAD_LOCAL 1
+#define AP_THREAD_LOCAL     APR_THREAD_LOCAL
+#else
+#define AP_HAS_THREAD_LOCAL 0
 #endif
+#define ap_thread_create                apr_thread_create
 #define ap_thread_current               apr_thread_current
 #define ap_thread_current_create        apr_thread_current_create
 #define ap_thread_current_after_fork    apr_thread_current_after_fork
 
-#else /* APR_VERSION_AT_LEAST(1,8,0) */
+#else /* APR_VERSION_AT_LEAST(1,8,0) && !defined(AP_NO_THREAD_LOCAL) */
 
-#if !defined(AP_NO_THREAD_LOCAL)
+#ifndef AP_NO_THREAD_LOCAL
 /**
- * AP_THREAD_LOCAL keyword aliases the compiler's.
+ * AP_THREAD_LOCAL keyword mapping the compiler's.
  */
 #if defined(__cplusplus) && __cplusplus >= 201103L
 #define AP_THREAD_LOCAL thread_local
@@ -2612,7 +2446,18 @@ AP_DECLARE(apr_status_t) ap_thread_main_create(apr_thread_t **thread,
 #elif defined(WIN32) && defined(_MSC_VER)
 #define AP_THREAD_LOCAL __declspec(thread)
 #endif
-#endif /* !defined(AP_NO_THREAD_LOCAL) */
+#endif /* ndef AP_NO_THREAD_LOCAL */
+
+#ifndef AP_THREAD_LOCAL
+#define AP_HAS_THREAD_LOCAL 0
+#define ap_thread_create apr_thread_create
+#else /* AP_THREAD_LOCAL */
+#define AP_HAS_THREAD_LOCAL 1
+AP_DECLARE(apr_status_t) ap_thread_create(apr_thread_t **thread, 
+                                          apr_threadattr_t *attr, 
+                                          apr_thread_start_t func, 
+                                          void *data, apr_pool_t *pool);
+#endif /* AP_THREAD_LOCAL */
 
 AP_DECLARE(apr_status_t) ap_thread_current_create(apr_thread_t **current,
                                                   apr_threadattr_t *attr,
@@ -2620,29 +2465,28 @@ AP_DECLARE(apr_status_t) ap_thread_current_create(apr_thread_t **current,
 AP_DECLARE(void) ap_thread_current_after_fork(void);
 AP_DECLARE(apr_thread_t *) ap_thread_current(void);
 
-#endif /* APR_VERSION_AT_LEAST(1,8,0) */
+#endif /* APR_VERSION_AT_LEAST(1,8,0) && !defined(AP_NO_THREAD_LOCAL) */
+
+AP_DECLARE(apr_status_t) ap_thread_main_create(apr_thread_t **thread,
+                                               apr_pool_t *pool);
+
+#else  /* APR_HAS_THREADS */
+
+#define AP_HAS_THREAD_LOCAL 0
 
 #endif /* APR_HAS_THREADS */
-
-#ifdef AP_THREAD_LOCAL
-#define AP_HAS_THREAD_LOCAL 1
-#else
-#define AP_HAS_THREAD_LOCAL 0
-#endif
 
 /**
  * Get server load params
  * @param ld struct to populate: -1 in fields means error
  */
-AP_DECLARE(void) ap_get_sload(ap_sload_t *ld)
-                 AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(void) ap_get_sload(ap_sload_t *ld);
 
 /**
  * Get server load averages (ala getloadavg)
  * @param ld struct to populate: -1 in fields means error
  */
-AP_DECLARE(void) ap_get_loadavg(ap_loadavg_t *ld)
-                 AP_FN_ATTR_NONNULL_ALL;
+AP_DECLARE(void) ap_get_loadavg(ap_loadavg_t *ld);
 
 /**
  * Convert binary data into a hex string
@@ -2650,27 +2494,8 @@ AP_DECLARE(void) ap_get_loadavg(ap_loadavg_t *ld)
  * @param srclen length of the data
  * @param dest pointer to buffer of length (2 * srclen + 1). The resulting
  *        string will be NUL-terminated.
- * @deprecated Replaced by apr_escape_hex() in APR
  */
-AP_DECLARE(void) ap_bin2hex(const void *src, apr_size_t srclen, char *dest)
-                 AP_FN_ATTR_NONNULL_ALL;
-
-/**
- * Wrapper for @a apr_password_validate() to cache expensive calculations
- * @param r the current request
- * @param username username of the user
- * @param passwd password string
- * @param hash hash string to be passwd to @a apr_password_validate()
- * @return APR_SUCCESS if passwords match, APR_EMISMATCH or error otherwise
- * @note Currently, ap_password_validate() only caches the result of the
- *       most recent call with the same connection as @a r.
- *       In the future, it may also do rate-limiting against brute-force
- *       attacks.
- */
-AP_DECLARE(apr_status_t) ap_password_validate(request_rec *r,
-                                              const char *username,
-                                              const char *passwd,
-                                              const char *hash);
+AP_DECLARE(void) ap_bin2hex(const void *src, apr_size_t srclen, char *dest);
 
 /**
  * Short function to execute a command and return the first line of
@@ -2683,7 +2508,6 @@ AP_DECLARE(apr_status_t) ap_password_validate(request_rec *r,
 AP_DECLARE(char *) ap_get_exec_line(apr_pool_t *p,
                                     const char *cmd,
                                     const char * const *argv);
-
 
 #define AP_NORESTART APR_OS_START_USEERR + 1
 

@@ -40,7 +40,7 @@ extern "C" {
 
 /* Scoreboard file, if there is one */
 #ifndef DEFAULT_SCOREBOARD
-#define DEFAULT_SCOREBOARD "apache_runtime_status" /* within DEFAULT_REL_RUNTIMEDIR */
+#define DEFAULT_SCOREBOARD "logs/apache_runtime_status"
 #endif
 
 /* Scoreboard info on a process is, for now, kept very brief ---
@@ -116,8 +116,8 @@ struct worker_score {
     char request[64];           /* We just want an idea... */
     char vhost[32];             /* What virtual host is being accessed? */
     char protocol[16];          /* What protocol is used on the connection? */
-    char client64[64];
     apr_time_t duration;
+    char client64[64];
 };
 
 typedef struct {
@@ -148,6 +148,9 @@ struct process_score {
     apr_uint32_t lingering_close;   /* async connections in lingering close */
     apr_uint32_t keep_alive;        /* async connections in keep alive */
     apr_uint32_t suspended;         /* connections suspended by some module */
+    int bucket;  /* Listener bucket used by this child; this field is DEPRECATED
+                  * and no longer updated by the MPMs (i.e. always zero).
+                  */
 };
 
 /* Scoreboard is now in 'local' memory, since it isn't updated once created,
@@ -183,8 +186,6 @@ AP_DECLARE(void) ap_create_sb_handle(ap_sb_handle_t **new_sbh, apr_pool_t *p,
                                      int child_num, int thread_num);
 AP_DECLARE(void) ap_update_sb_handle(ap_sb_handle_t *sbh,
                                      int child_num, int thread_num);
-AP_DECLARE(void) ap_sb_get_child_thread(ap_sb_handle_t *sbh,
-                                        int *pchild_num, int *pthread_num);
 
 AP_DECLARE(int) ap_find_child_by_pid(apr_proc_t *pid);
 AP_DECLARE(int) ap_update_child_status(ap_sb_handle_t *sbh, int status, request_rec *r);

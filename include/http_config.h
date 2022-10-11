@@ -117,7 +117,7 @@ typedef union {
 
 /** mechanism for declaring a directive with no arguments */
 # define AP_INIT_NO_ARGS(directive, func, mconfig, where, help) \
-    { directive, { .no_args=func }, mconfig, where, NO_ARGS, help }
+    { directive, { .no_args=func }, mconfig, where, RAW_ARGS, help }
 /** mechanism for declaring a directive with raw argument parsing */
 # define AP_INIT_RAW_ARGS(directive, func, mconfig, where, help) \
     { directive, { .raw_args=func }, mconfig, where, RAW_ARGS, help }
@@ -168,7 +168,7 @@ typedef const char *(*cmd_func) ();
 # define AP_FLAG     func
 
 # define AP_INIT_NO_ARGS(directive, func, mconfig, where, help) \
-    { directive, func, mconfig, where, NO_ARGS, help }
+    { directive, func, mconfig, where, RAW_ARGS, help }
 # define AP_INIT_RAW_ARGS(directive, func, mconfig, where, help) \
     { directive, func, mconfig, where, RAW_ARGS, help }
 # define AP_INIT_TAKE_ARGV(directive, func, mconfig, where, help) \
@@ -295,7 +295,7 @@ struct cmd_parms_struct {
     /** Table of directives allowed per AllowOverrideList */
     apr_table_t *override_list;
     /** Which methods are &lt;Limit&gt;ed */
-    ap_method_mask_t limited;
+    apr_int64_t limited;
     /** methods which are limited */
     apr_array_header_t *limited_xmethods;
     /** methods which are xlimited */
@@ -327,10 +327,7 @@ struct cmd_parms_struct {
     struct ap_conf_vector_t *context;
     /** directive with syntax error */
     const ap_directive_t *err_directive;
- 
-    /** If the current directive is EXEC_ON_READ, this is the last 
-        (non-EXEC_ON_READ)  enclosing directive  */
-    ap_directive_t *parent;
+
 };
 
 /**
@@ -427,7 +424,7 @@ struct module_struct {
  * The AP_MAYBE_UNUSED macro is used for variable declarations that
  * might potentially exhibit "unused var" warnings on some compilers if
  * left untreated.
- * Since static initializers are not part of the C language (C89), making
+ * Since static intializers are not part of the C language (C89), making
  * (void) usage is not possible. However many compiler have proprietary 
  * mechanism to suppress those warnings.  
  */
@@ -536,8 +533,8 @@ AP_DECLARE(void) ap_set_module_config(ap_conf_vector_t *cv, const module *m,
 /**
  * When module flags have been introduced, and a way to check this.
  */
-#define AP_MODULE_FLAGS_MMN_MAJOR 20161018
-#define AP_MODULE_FLAGS_MMN_MINOR 7
+#define AP_MODULE_FLAGS_MMN_MAJOR 20120211
+#define AP_MODULE_FLAGS_MMN_MINOR 70
 #define AP_MODULE_HAS_FLAGS(m) \
         AP_MODULE_MAGIC_AT_LEAST(AP_MODULE_FLAGS_MMN_MAJOR, \
                                  AP_MODULE_FLAGS_MMN_MINOR)
@@ -760,14 +757,6 @@ AP_DECLARE(char *) ap_server_root_relative(apr_pool_t *p, const char *fname);
  */
 AP_DECLARE(char *) ap_runtime_dir_relative(apr_pool_t *p, const char *fname);
 
-/**
- * Compute the name of a persistent state file (e.g. a database or
- * long-lived cache) relative to the appropriate state directory.
- * Absolute paths are returned as-is.  The state directory is
- * configured via the DefaultStateDir directive or at build time.
- */
-AP_DECLARE(char *) ap_state_dir_relative(apr_pool_t *p, const char *fname);
-
 /* Finally, the hook for dynamically loading modules in... */
 
 /**
@@ -890,7 +879,7 @@ AP_DECLARE(const char *) ap_pcfg_strerror(apr_pool_t *p, ap_configfile_t *cfp,
  * @note If cmd->pool == cmd->temp_pool, ap_soak_end_container() will assume
  *       .htaccess context and use a lower maximum line length.
  */
-AP_DECLARE(const char *) ap_soak_end_container(cmd_parms *cmd, const char *directive);
+AP_DECLARE(const char *) ap_soak_end_container(cmd_parms *cmd, char *directive);
 
 /**
  * Read all data between the current &lt;foo&gt; and the matching &lt;/foo&gt; and build
@@ -910,7 +899,7 @@ AP_DECLARE(const char *) ap_build_cont_config(apr_pool_t *p,
                                               cmd_parms *parms,
                                               ap_directive_t **current,
                                               ap_directive_t **curr_parent,
-                                              const char *orig_directive);
+                                              char *orig_directive);
 
 /**
  * Build a config tree from a config file

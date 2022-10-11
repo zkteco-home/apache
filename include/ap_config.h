@@ -102,52 +102,6 @@
 #define AP_DECLARE_DATA             __declspec(dllimport)
 #endif
 
-#if !defined(WIN32)
-/**
- * The public APREQ functions are declared with APREQ_DECLARE(), so they may
- * use the most appropriate calling convention.  Public APR functions with 
- * variable arguments must use APR_DECLARE_NONSTD().
- *
- * @remark Both the declaration and implementations must use the same macro.
- */
-/** APREQ_DECLARE(rettype) apeq_func(args)
- */
-#define APREQ_DECLARE(d)                APR_DECLARE(d)
-/**
- * The public APEQ functions using variable arguments are declared with 
- * APEQ_DECLARE_NONSTD(), as they must follow the C language calling convention.
- * @see APEQ_DECLARE @see APEQ_DECLARE_DATA
- * @remark Both the declaration and implementations must use the same macro.
- * @example
- */
-/** APEQ_DECLARE_NONSTD(rettype) apr_func(args, ...);
- */
-#define APREQ_DECLARE_NONSTD(d)         APR_DECLARE_NONSTD(d)
-/**
- * The public APREQ variables are declared with APREQ_DECLARE_DATA.
- * This assures the appropriate indirection is invoked at compile time.
- * @see APREQ_DECLARE @see APREQ_DECLARE_NONSTD
- * @remark Note that the declaration and implementations use different forms,
- * but both must include the macro.
- */
-/** extern APREQ_DECLARE_DATA type apr_variable;\n
- * APREQ_DECLARE_DATA type apr_variable = value;
- */
-#define APREQ_DECLARE_DATA
-#elif defined (APREQ_DECLARE_STATIC)
-#define APREQ_DECLARE(type)             type __stdcall
-#define APREQ_DECLARE_NONSTD(type)      type
-#define APREQ_DECLARE_DATA
-#elif defined (APREQ_DECLARE_EXPORT)
-#define APREQ_DECLARE(type)             __declspec(dllexport) type __stdcall
-#define APREQ_DECLARE_NONSTD(type)      __declspec(dllexport) type
-#define APREQ_DECLARE_DATA              __declspec(dllexport)
-#else
-#define APREQ_DECLARE(type)             __declspec(dllimport) type __stdcall
-#define APREQ_DECLARE_NONSTD(type)      __declspec(dllimport) type
-#define APREQ_DECLARE_DATA              __declspec(dllimport)
-#endif
-
 #if !defined(WIN32) || defined(AP_MODULE_DECLARE_STATIC)
 /**
  * Declare a dso module's exported module structure as AP_MODULE_DECLARE_DATA.
@@ -187,7 +141,7 @@
 
 /* Where the main/parent process's pid is logged */
 #ifndef DEFAULT_PIDLOG
-#define DEFAULT_PIDLOG "httpd.pid"
+#define DEFAULT_PIDLOG DEFAULT_REL_RUNTIMEDIR "/httpd.pid"
 #endif
 
 #if defined(NETWARE)
@@ -248,18 +202,5 @@
 #define AP_FN_ATTR_ALLOC_SIZE(x)
 #define AP_FN_ATTR_ALLOC_SIZE2(x,y)
 #endif
-
-#if ( defined(__GNUC__) &&                                        \
-      (__GNUC__ >= 4 || ( __GNUC__ == 3 && __GNUC_MINOR__ >= 3))) \
-    || __has_attribute(nonnull)
-/* all pointer arguments */
-#define AP_FN_ATTR_NONNULL_ALL  __attribute__((nonnull))
-/* listed arguments, use with double braces: AP_FN_ATTR_NONNULL((1,3,6)) */
-#define AP_FN_ATTR_NONNULL(x)   __attribute__((nonnull x))
-#else
-#define AP_FN_ATTR_NONNULL_ALL
-#define AP_FN_ATTR_NONNULL(x)
-#endif
-
 
 #endif /* AP_CONFIG_H */

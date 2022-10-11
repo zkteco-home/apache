@@ -392,81 +392,24 @@ extern const char *ap_mpm_set_exception_hook(cmd_parms *cmd, void *dummy,
                                              const char *arg);
 #endif
 
-/**
- * This hook allows modules to be called at intervals by some MPMs
- * in the parent process.  IOW, this is not portable to all platforms
- * or MPMs.
- * @param p The pconf pool
- * @param s The main server
- * @return OK or DECLINED (errors are ignored)
- * @ingroup hooks
- */
 AP_DECLARE_HOOK(int,monitor,(apr_pool_t *p, server_rec *s))
 
 /* register modules that undertake to manage system security */
 AP_DECLARE(int) ap_sys_privileges_handlers(int inc);
 AP_DECLARE_HOOK(int, drop_privileges, (apr_pool_t * pchild, server_rec * s))
 
-/**
- * implement the ap_mpm_query() function
+/* implement the ap_mpm_query() function
  * The MPM should return OK+APR_ENOTIMPL for any unimplemented query codes;
  * modules which intercede for specific query codes should DECLINE for others.
- * @ingroup hooks
  */
 AP_DECLARE_HOOK(int, mpm_query, (int query_code, int *result, apr_status_t *rv))
 
-/**
- * register the specified callback
- * @ingroup hooks
- */
+/* register the specified callback */
 AP_DECLARE_HOOK(apr_status_t, mpm_register_timed_callback,
                 (apr_time_t t, ap_mpm_callback_fn_t *cbfn, void *baton))
 
-/**
- * register the specified callback
- * @ingroup hooks
- */
-AP_DECLARE_HOOK(apr_status_t, mpm_register_poll_callback,
-                (apr_pool_t *p, const apr_array_header_t *pds,
-                 ap_mpm_callback_fn_t *cbfn, void *baton))
-
-/* register the specified callback, with timeout 
- * @ingroup hooks
- *
- */
-AP_DECLARE_HOOK(apr_status_t, mpm_register_poll_callback_timeout,
-                (apr_pool_t *p, const apr_array_header_t *pds,
-                ap_mpm_callback_fn_t *cbfn, ap_mpm_callback_fn_t *tofn,
-                void *baton, apr_time_t timeout))
-
-/** Resume the suspended connection 
- * @ingroup hooks
- */
-AP_DECLARE_HOOK(apr_status_t, mpm_resume_suspended, (conn_rec*))
-
-/**
- * Get MPM name (e.g., "prefork" or "event")
- * @ingroup hooks
- */
+/* get MPM name (e.g., "prefork" or "event") */
 AP_DECLARE_HOOK(const char *,mpm_get_name,(void))
-
-/**
- * Hook called to determine whether we should stay within the write completion
- * phase.
- * @param c The current connection
- * @return OK if write completion should continue, DECLINED if write completion
- * should end gracefully, or a positive error if we should begin to linger.
- * @ingroup hooks
- */
-AP_DECLARE_HOOK(int, output_pending, (conn_rec *c))
-
-/**
- * Hook called to determine whether any data is pending in the input filters.
- * @param c The current connection
- * @return OK if we can read without blocking, DECLINED if a read would block.
- * @ingroup hooks
- */
-AP_DECLARE_HOOK(int, input_pending, (conn_rec *c))
 
 /**
  * Notification that connection handling is suspending (disassociating from the
@@ -485,7 +428,6 @@ AP_DECLARE_HOOK(int, input_pending, (conn_rec *c))
  * @note Resumption and subsequent suspension of a connection solely to perform
  * I/O by the MPM, with no execution of non-MPM code, may not necessarily result
  * in a call to this hook.
- * @ingroup hooks
  */
 AP_DECLARE_HOOK(void, suspend_connection,
                 (conn_rec *c, request_rec *r))
@@ -506,34 +448,17 @@ AP_DECLARE_HOOK(void, suspend_connection,
  * @note Resumption and subsequent suspension of a connection solely to perform
  * I/O by the MPM, with no execution of non-MPM code, may not necessarily result
  * in a call to this hook.
- * @ingroup hooks
  */
 AP_DECLARE_HOOK(void, resume_connection,
                 (conn_rec *c, request_rec *r))
 
 /**
- * Notification that the child is stopping. No new requests
- * or other tasks to be started.
- * If graceful, already started requests/tasks should be
- * processed normally.
+ * Notification that the child is stopping. If graceful, ongoing
+ * requests will be served.
  * @param pchild The child pool
  * @param graceful != 0 iff this is a graceful shutdown.
  */
 AP_DECLARE_HOOK(void, child_stopping,
-                (apr_pool_t *pchild, int graceful))
-
-/**
- * Notification that the child has stopped processing
- * requests completely. Any running threads should be
- * shut down now.
- * Ideally, when this hook completes, no more threads
- * are running in the child process.
- * Note that de-allocation of global resources should
- * be run via memory pool destroy callback after this.
- * @param pchild The child pool
- * @param graceful != 0 iff this is a graceful shutdown.
- */
-AP_DECLARE_HOOK(void, child_stopped,
                 (apr_pool_t *pchild, int graceful))
 
 /* mutex type string for accept mutex, if any; MPMs should use the

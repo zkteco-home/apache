@@ -553,6 +553,8 @@ typedef struct {
 #define HOSTNAME_LOOKUP_UNSET   3
     unsigned int hostname_lookups : 4;
 
+    unsigned int content_md5 : 2;  /* calculate Content-MD5? */
+
 #define USE_CANONICAL_NAME_OFF   (0)
 #define USE_CANONICAL_NAME_ON    (1)
 #define USE_CANONICAL_NAME_DNS   (2)
@@ -655,9 +657,6 @@ typedef struct {
     /** Max number of Range reversals (eg: 200-300, 100-125) allowed **/
     int max_reversals;
 
-    unsigned int allow_encoded_slashes_set : 1;
-    unsigned int decode_encoded_slashes_set : 1;
-
     /** Named back references */
     apr_array_header_t *refs;
 
@@ -734,7 +733,8 @@ typedef struct {
 #define AP_MERGE_TRAILERS_DISABLE  2
     int merge_trailers;
 
-    apr_array_header_t *conn_log_level;
+    apr_array_header_t *protocols;
+    int protocols_honor_order;
 
 #define AP_HTTP09_UNSET   0
 #define AP_HTTP09_ENABLE  1
@@ -750,26 +750,11 @@ typedef struct {
 #define AP_HTTP_METHODS_LENIENT       1
 #define AP_HTTP_METHODS_REGISTERED    2
     char http_methods;
-
-#define AP_HTTP_CL_HEAD_ZERO_UNSET    0
-#define AP_HTTP_CL_HEAD_ZERO_ENABLE   1
-#define AP_HTTP_CL_HEAD_ZERO_DISABLE  2
-    int http_cl_head_zero;
-
-#define AP_HTTP_EXPECT_STRICT_UNSET    0
-#define AP_HTTP_EXPECT_STRICT_ENABLE   1
-#define AP_HTTP_EXPECT_STRICT_DISABLE  2
-    int http_expect_strict;
-
-    apr_array_header_t *protocols;
-    int protocols_honor_order;
-    int async_filter;
-    unsigned int async_filter_set:1;
+    unsigned int merge_slashes;
  
     apr_size_t   flush_max_threshold;
     apr_int32_t  flush_max_pipelined;
     unsigned int strict_host_check;
-    unsigned int merge_slashes;
 } core_server_config;
 
 /* for AddOutputFiltersByType in core.c */
@@ -794,6 +779,25 @@ apr_status_t ap_core_output_filter(ap_filter_t *f, apr_bucket_brigade *b);
 
 AP_DECLARE(const char*) ap_get_server_protocol(server_rec* s);
 AP_DECLARE(void) ap_set_server_protocol(server_rec* s, const char* proto);
+
+typedef struct core_output_filter_ctx core_output_filter_ctx_t;
+typedef struct core_filter_ctx        core_ctx_t;
+
+struct core_filter_ctx {
+    apr_bucket_brigade *b;
+    apr_bucket_brigade *tmpbb;
+};
+
+typedef struct core_net_rec {
+    /** Connection to the client */
+    apr_socket_t *client_socket;
+
+    /** connection record */
+    conn_rec *c;
+
+    core_output_filter_ctx_t *out_ctx;
+    core_ctx_t *in_ctx;
+} core_net_rec;
 
 /**
  * Insert the network bucket into the core input filter's input brigade.
@@ -911,58 +915,14 @@ typedef struct ap_errorlog_info {
     /** apr error status related to the log message, 0 if no error */
     apr_status_t status;
 
-    /** 1 if logging using provider, 0 otherwise */
-    int using_provider;
+    /** 1 if logging to syslog, 0 otherwise */
+    int using_syslog;
     /** 1 if APLOG_STARTUP was set for the log message, 0 otherwise */
     int startup;
 
     /** message format */
     const char *format;
 } ap_errorlog_info;
-
-#define AP_ERRORLOG_PROVIDER_GROUP "error_log_writer"
-#define AP_ERRORLOG_PROVIDER_VERSION "0"
-#define AP_ERRORLOG_DEFAULT_PROVIDER "file"
-
-/** add APR_EOL_STR to the end of log message */
-#define AP_ERRORLOG_PROVIDER_ADD_EOL_STR       1
-
-typedef struct ap_errorlog_provider ap_errorlog_provider;
-
-struct ap_errorlog_provider {
-    /** Initializes the error log writer.
-     * @param p The pool to create any storage from
-     * @param s Server for which the logger is initialized
-     * @return Pointer to handle passed later to writer() function
-     * @note On success, the provider must return non-NULL, even if
-     * the handle is not necessary when the writer() function is
-     * called.  On failure, the provider should log a startup error
-     * message and return NULL to abort httpd startup.
-     */
-    void * (*init)(apr_pool_t *p, server_rec *s);
-
-    /** Logs the error message to external error log.
-     * @param info Context of the error message
-     * @param handle Handle created by init() function
-     * @param errstr Error message
-     * @param len Length of the error message
-     */
-    apr_status_t (*writer)(const ap_errorlog_info *info, void *handle,
-                           const char *errstr, apr_size_t len);
-
-    /** Checks syntax of ErrorLog directive argument.
-     * @param cmd The config directive
-     * @param arg ErrorLog directive argument (or the empty string if
-     * no argument was provided)
-     * @return Error message or NULL on success
-     * @remark The argument will be stored in the error_fname field
-     * of server_rec for access later.
-     */
-    const char * (*parse_errorlog_arg)(cmd_parms *cmd, const char *arg);
-
-    /** a combination of the AP_ERRORLOG_PROVIDER_* flags */
-    unsigned int flags;
-};
 
 /**
  * callback function prototype for a external errorlog handler
@@ -1099,20 +1059,6 @@ AP_DECLARE(int) ap_state_query(int query_code);
 #define AP_SQ_RM_CONFIG_TEST       3
   /** only dump some parts of the config */
 #define AP_SQ_RM_CONFIG_DUMP       4
-
-
-/* ---------------------------------------------------------------------- */
-
-/** Create a slave connection
- * @param c The connection to create the slave connection from/for
- * @return The slave connection
- */
-AP_CORE_DECLARE(conn_rec *) ap_create_slave_connection(conn_rec *c);
-
-
-/** Macro to provide a default value if the pointer is not yet initialised
- */
-#define AP_CORE_DEFAULT(X, Y, Z)    (X ? X->Y : Z)
 
 #ifdef __cplusplus
 }

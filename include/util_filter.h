@@ -184,17 +184,6 @@ typedef enum {
 } ap_filter_type;
 
 /**
- * These flags indicate whether the given filter is an input filter or an
- * output filter.
- */
-typedef enum {
-    /** Input filters */
-    AP_FILTER_INPUT     = 1,
-    /** Output filters */
-    AP_FILTER_OUTPUT    = 2,
-} ap_filter_direction_e;
-
-/**
  * This is the request-time context structure for an installed filter (in
  * the output filter chain). It provides the callback to use for filtering,
  * the request this filter is associated with (which is important when
@@ -258,15 +247,7 @@ struct ap_filter_rec_t {
 
     /** Protocol flags for this filter */
     unsigned int proto_flags;
-
-    /** Whether the filter is an input or output filter */
-    ap_filter_direction_e direction;
 };
-
-/**
- * @brief The private/opaque data in ap_filter_t.
- */
-struct ap_filter_private;
 
 /**
  * @brief The representation of a filter chain.
@@ -297,29 +278,7 @@ struct ap_filter_t {
      *  to the request_rec, except that it is used for connection filters.
      */
     conn_rec *c;
-
-    /** Filter private/opaque data */
-    struct ap_filter_private *priv;
 };
-
-/**
- * @brief The filters private/opaque context in conn_rec.
- */
-struct ap_filter_conn_ctx;
-
-/**
- * Acquire a brigade created on the connection pool/alloc.
- * @param c The connection
- * @return The brigade (cleaned up)
- */
-AP_DECLARE(apr_bucket_brigade *) ap_acquire_brigade(conn_rec *c);
-
-/**
- * Release and cleanup a brigade (created on the connection pool/alloc!).
- * @param c The connection
- * @param bb The brigade
- */
-AP_DECLARE(void) ap_release_brigade(conn_rec *c, apr_bucket_brigade *bb);
 
 /**
  * Get the current bucket brigade from the next filter on the filter
@@ -560,11 +519,8 @@ AP_DECLARE(apr_status_t) ap_remove_output_filter_byhandle(ap_filter_t *next,
  */
 
 /**
- * Prepare a bucket brigade to be setaside.  If a different brigade was
+ * prepare a bucket brigade to be setaside.  If a different brigade was
  * set-aside earlier, then the two brigades are concatenated together.
- *
- * If *save_to is NULL, the brigade will be created, and a cleanup registered
- * to clear the brigade address when the pool is destroyed.
  * @param f The current filter
  * @param save_to The brigade that was previously set-aside.  Regardless, the
  *             new bucket brigade is returned in this location.
@@ -575,97 +531,6 @@ AP_DECLARE(apr_status_t) ap_remove_output_filter_byhandle(ap_filter_t *next,
 AP_DECLARE(apr_status_t) ap_save_brigade(ap_filter_t *f,
                                          apr_bucket_brigade **save_to,
                                          apr_bucket_brigade **b, apr_pool_t *p);
-
-/**
- * Prepare the filter to allow brigades to be set aside. This can be used
- * within an input filter to allocate space to set aside data in the input
- * filters, or can be used within an output filter by being called via
- * ap_filter_setaside_brigade().
- * @param f The current filter
- * @returns OK if a brigade was created, DECLINED otherwise.
- */
-AP_DECLARE(int) ap_filter_prepare_brigade(ap_filter_t *f);
-
-/**
- * Prepare a bucket brigade to be setaside, creating a dedicated pool if
- * necessary within the filter to handle the lifetime of the setaside brigade.
- * @param f The current filter
- * @param bb The bucket brigade to set aside.  This brigade is always empty
- *          on return
- */
-AP_DECLARE(apr_status_t) ap_filter_setaside_brigade(ap_filter_t *f,
-                                                    apr_bucket_brigade *bb);
-
-/**
- * Reinstate a brigade setaside earlier, and calculate the amount of data we
- * should write based on the presence of flush buckets, size limits on in
- * memory buckets, and the number of outstanding requests in the pipeline.
- * This is a safety mechanism to protect against a module that might try
- * generate data too quickly for downstream to handle without yielding as
- * it should.
- *
- * If the brigade passed in is empty, we reinstate the brigade and return
- * immediately on the assumption that any buckets needing to be flushed were
- * flushed before being passed to ap_filter_setaside_brigade().
- *
- * @param f The current filter
- * @param bb The bucket brigade to restore to.
- * @param flush_upto Work out the bucket we need to flush up to, based on the
- *                   presence of a flush bucket, size limits on in-memory
- *                   buckets, size limits on the number of requests outstanding
- *                   in the pipeline.
- * @return APR_SUCCESS.
- */
-AP_DECLARE(apr_status_t) ap_filter_reinstate_brigade(ap_filter_t *f,
-                                                     apr_bucket_brigade *bb,
-                                                     apr_bucket **flush_upto);
-
-/**
- * Adopt a bucket brigade as is (no setaside nor copy).
- * @param f The current filter
- * @param bb The bucket brigade adopted.  This brigade is always empty
- *          on return
- * @remark All buckets in bb should be allocated on f->c->pool and
- *         f->c->bucket_alloc.
- */
-AP_DECLARE(void) ap_filter_adopt_brigade(ap_filter_t *f,
-                                         apr_bucket_brigade *bb);
-
-/**
- * This function calculates whether there are any as yet unsent
- * buffered brigades in downstream filters, and returns non zero
- * if so.
- *
- * A filter should use this to determine whether the passing of data
- * downstream might block, and so defer the passing of brigades
- * downstream with ap_filter_setaside_brigade().
- *
- * This function can be called safely from a handler.
- */
-AP_DECLARE(int) ap_filter_should_yield(ap_filter_t *f);
-
-/**
- * This function determines whether there is unwritten data in the output
- * filters, and if so, attempts to make a single write to each filter
- * with unwritten data.
- *
- * @param c The connection.
- * @return If no unwritten data remains, this function returns DECLINED.
- * If some unwritten data remains, this function returns OK. If any
- * attempt to write data failed, this functions returns a positive integer.
- */
-AP_DECLARE_NONSTD(int) ap_filter_output_pending(conn_rec *c);
-
-/**
- * This function determines whether there is pending data in the input
- * filters. Pending data is data that has been read from the underlying
- * socket but not yet returned to the application.
- *
- * @param c The connection.
- * @return If no pending data remains, this function returns DECLINED.
- * If some pending data remains, this function returns OK.
- */
-AP_DECLARE_NONSTD(int) ap_filter_input_pending(conn_rec *c);
 
 /**
  * Flush function for apr_brigade_* calls.  This calls ap_pass_brigade
@@ -762,46 +627,6 @@ AP_DECLARE(void) ap_filter_protocol(ap_filter_t* f, unsigned int proto_flags);
 
 /** Filter is incompatible with "Cache-Control: no-transform" */
 #define AP_FILTER_PROTO_TRANSFORM 0x20
-
-/**
- * @brief Write Completion (WC) bucket
- *
- * A WC bucket is a FLUSH bucket with special ->data == &ap_bucket_wc_data,
- * still both AP_BUCKET_IS_WC() and APR_BUCKET_IS_FLUSH() hold for them so
- * they have the same semantics for most filters, namely:
- *   Everything produced before shall be passed to the next filter, including
- *   the WC/FLUSH bucket itself.
- * The distinction between WC and FLUSH buckets is only for filters that care
- * about write completion (calling ap_filter_reinstate_brigade() with non-NULL
- * flush_upto), those can setaside WC buckets and the preceding data provided
- * they have first determined that the next filter(s) have pending data
- * already, usually by calling ap_filter_should_yield(f->next).
- */
-
-/** Write Completion (WC) bucket data mark */
-AP_DECLARE_DATA extern const char ap_bucket_wc_data;
-
-/**
- * Determine if a bucket is a Write Completion (WC) bucket
- * @param e The bucket to inspect
- * @return true or false
- */
-#define AP_BUCKET_IS_WC(e) (APR_BUCKET_IS_FLUSH(e) && \
-                            (e)->data == (void *)&ap_bucket_wc_data)
-
-/**
- * Make the bucket passed in a Write Completion (WC) bucket
- * @param b The bucket to make into a WC bucket
- * @return The new bucket, or NULL if allocation failed
- */
-AP_DECLARE(apr_bucket *) ap_bucket_wc_make(apr_bucket *b);
-
-/**
- * Create a bucket referring to a Write Completion (WC).
- * @param list The freelist from which this bucket should be allocated
- * @return The new bucket, or NULL if allocation failed
- */
-AP_DECLARE(apr_bucket *) ap_bucket_wc_create(apr_bucket_alloc_t *list);
 
 /**
  * @}
