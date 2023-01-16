@@ -67,7 +67,7 @@ struct apr_other_child_rec_t {
  */
 extern int APR_DECLARE_DATA apr_app_init_complete;
 
-int apr_wastrtoastr(char const * const * *retarr, 
+int apr_wastrtoastr(char const * const * *retarr,
                     wchar_t const * const *arr, int args);
 
 /* Platform specific designation of run time os version.
@@ -117,13 +117,6 @@ typedef enum {
 extern APR_DECLARE_DATA apr_oslevel_e apr_os_level;
 
 apr_status_t apr_get_oslevel(apr_oslevel_e *);
-
-#if defined(_WIN32_WCE) || defined(WINNT)
-#define APR_HAS_ANSI_FS           0
-#else
-#define APR_HAS_ANSI_FS           1
-#endif
-
 /* IF_WIN_OS_IS_UNICODE / ELSE_WIN_OS_IS_ANSI help us keep the code trivial
  * where have runtime tests for unicode-ness, that aren't needed in any
  * build which supports only WINNT or WCE.
@@ -135,7 +128,6 @@ apr_status_t apr_get_oslevel(apr_oslevel_e *);
 #define IF_WIN_OS_IS_UNICODE
 #define ELSE_WIN_OS_IS_ANSI
 #endif /* WINNT */
-
 
 #if defined(_MSC_VER)
 #include "crtdbg.h"
@@ -169,7 +161,7 @@ static APR_INLINE void* apr_realloc_dbg(void* userData, size_t newSize,
 #endif  /* ! _MSC_VER */
 
 /* Wrapper around WaitForSingleObject() that accepts apr_interval_time_t
- * in microseconds instead of milliseconds. Values < 0 mean wait 
+ * in microseconds instead of milliseconds. Values < 0 mean wait
  * forever, 0 means do not wait at all. */
 DWORD apr_wait_for_single_object(HANDLE handle, apr_interval_time_t timeout);
 

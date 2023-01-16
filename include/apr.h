@@ -653,7 +653,7 @@ typedef int apr_wait_t;
 #define APU_HAVE_CRYPTO_PRNG    0
 #define APU_HAVE_NSS            0
 #define APU_HAVE_COMMONCRYPTO   0
-#define APU_HAVE_OPENSSL        0
+#define APU_HAVE_OPENSSL        1
 
 #define APU_HAVE_ICONV          0
 #define APR_HAS_XLATE           (APU_HAVE_ICONV)
