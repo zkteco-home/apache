@@ -8,7 +8,7 @@
 ### Compile Options
 * Server version: Apache/2.5.1.dev (Win64)
 * Server loaded:  APR 2.0
-* Compiled using: APR 2.0,OpenSSL 1.1.1p,brotli 1.0.9,nghttp2 1.50.90,zlib 1.2.12,pcre 10.40
+* Compiled using: APR 2.0,OpenSSL 3.1.0,brotli 1.0.9,nghttp2 1.50.90,zlib 1.2.12,pcre 10.42
 * Architecture:   64-bit
 * Server MPM:     WinNT
 *   threaded:     yes 
