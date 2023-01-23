@@ -1,5 +1,8 @@
 ## Apache Http Server for Windows X64
-> Apache binaries are built with the original source released by the Apache Software Foundation and have been compiled with Visual Studio 2022 (VC17) to obtain higher performance and better stability
+> Apache binaries are built with the original source released by the Apache Software Foundation and have been compiled with Visual Studio 2022 (VC17) to obtain higher performance and better stability.
+
+The world's first version to support apr 2.0
+
 
 ### Build Specifications
 * Binary by: Michael wang
@@ -13,8 +16,8 @@
 * Server MPM:     WinNT
 *   threaded:     yes 
 
-modules/mod_wsgi.cp37-win_amd64.pyd(4.9.4) is used for Python3.7 with Django on Httpd 2.5
-modules/mod_wsgi.cp310-win_amd64.pyd(4.9.4) is used for Python3.10 with Django on Httpd 2.5
+modules/mod_wsgi.cp37-win_amd64.pyd(4.9.4) is used for Python3.7 with Django on Httpd 2.4 or 2.5
+modules/mod_wsgi.cp310-win_amd64.pyd(4.9.4) is used for Python3.10 with Django on Httpd 2.4 or 2.5
 
 
 ### System Requirements
