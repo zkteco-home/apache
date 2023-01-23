@@ -17,6 +17,7 @@ The world's first version to support apr 2.0
 *   threaded:     yes 
 
 modules/mod_wsgi.cp37-win_amd64.pyd(4.9.4) is used for Python3.7 with Django on Httpd 2.4 or 2.5
+
 modules/mod_wsgi.cp310-win_amd64.pyd(4.9.4) is used for Python3.10 with Django on Httpd 2.4 or 2.5
 
 
